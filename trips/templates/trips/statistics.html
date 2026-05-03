@@ -1,0 +1,119 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Статистика</h1>
+<p class="page-subtitle">Общая информация по вашим поездкам</p>
+
+<div class="row g-4 mt-4">
+
+    <div class="col-md-3">
+        <div class="card-custom text-center">
+            <h2>{{ total_trips }}</h2>
+            <p class="text-muted">Поездок</p>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card-custom text-center">
+            <h2>{{ total_expenses }} ₽</h2>
+            <p class="text-muted">Всего расходов</p>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card-custom text-center">
+            <h2>{{ total_votes }}</h2>
+            <p class="text-muted">Голосований</p>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card-custom text-center">
+            <h2>{{ total_comments }}</h2>
+            <p class="text-muted">Комментариев</p>
+        </div>
+    </div>
+
+</div>
+
+<div class="card-custom mt-4">
+    <h2>Средний бюджет поездки</h2>
+
+    <div class="mt-3">
+        <h1>{{ average_budget }} ₽</h1>
+    </div>
+</div>
+
+<div class="card-custom mt-4">
+    <h2>Расходы по категориям</h2>
+
+    {% if category_stats %}
+        <div class="category-chart-layout">
+            <div class="pie-chart-box">
+                <canvas id="statsChart"></canvas>
+            </div>
+
+            <div class="category-legend">
+                {% for c in category_stats %}
+                    <div class="category-legend-row">
+                        <span class="category-dot dot-{{ forloop.counter }}"></span>
+                        <span class="category-name">{{ c.name }}</span>
+                        <strong>{{ c.amount }} ₽</strong>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% else %}
+        <p class="text-muted mt-3">Нет данных для отображения.</p>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+{% if category_stats %}
+<script>
+    const labels = [
+        {% for c in category_stats %}
+            "{{ c.name }}",
+        {% endfor %}
+    ];
+
+    const data = [
+        {% for c in category_stats %}
+            {{ c.amount }},
+        {% endfor %}
+    ];
+
+    const ctx = document.getElementById('statsChart');
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    '#4f46e5',
+                    '#3b82f6',
+                    '#22c55e',
+                    '#facc15',
+                    '#94a3b8'
+                ],
+                borderWidth: 3,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            cutout: '60%'
+        }
+    });
+</script>
+{% endif %}
+
+{% endblock %}

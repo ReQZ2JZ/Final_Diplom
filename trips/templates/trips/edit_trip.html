@@ -1,0 +1,58 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Редактировать поездку</h1>
+<p class="page-subtitle">{{ trip.title }}</p>
+
+<div class="card-custom mt-4" style="max-width: 700px;">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Название</label>
+            {{ form.title }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Описание</label>
+            {{ form.description }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Направление</label>
+            {{ form.destination }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Дата начала</label>
+            {{ form.start_date }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Дата окончания</label>
+            {{ form.end_date }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Бюджет</label>
+            {{ form.budget }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Ссылка на изображение</label>
+            {{ form.image_url }}
+            <div class="form-text">
+                Вставьте ссылку на изображение города или оставьте поле пустым.
+            </div>
+        </div>
+
+        <button class="btn btn-primary">Сохранить</button>
+
+        <a href="{% url 'trip_detail' trip.id %}" class="btn btn-outline-primary ms-2">
+            Назад
+        </a>
+    </form>
+</div>
+
+{% endblock %}

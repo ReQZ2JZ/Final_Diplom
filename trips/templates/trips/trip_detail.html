@@ -1,0 +1,397 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<div class="trip-header">
+    <div>
+        <h1>{{ trip.title }}</h1>
+        <p>{{ trip.start_date }} — {{ trip.end_date }} • {{ trip.destination }}</p>
+    </div>
+
+    <div>
+        <a href="{% url 'trip_pdf_report' trip.id %}" class="btn btn-primary">
+            PDF-отчёт
+        </a>
+
+        <a href="{% url 'create_expense' trip.id %}" class="btn btn-outline-primary ms-2">
+            Добавить расход
+        </a>
+
+        <a href="{% url 'edit_trip' trip.id %}" class="btn btn-outline-primary ms-2">
+            Редактировать
+        </a>
+
+        <a href="{% url 'create_vote' trip.id %}" class="btn btn-outline-primary ms-2">
+            Создать голосование
+        </a>
+
+        <a href="{% url 'add_member' trip.id %}" class="btn btn-outline-primary ms-2">
+            Пригласить участника
+        </a>
+
+        <a href="{% url 'excursion' trip.id %}" class="btn btn-primary ms-2">
+            🗺 ИИ-экскурсия
+        </a>
+    </div>
+</div>
+
+{% if trip.image_url %}
+    <div class="hero-card hero-card-image" style="background-image: linear-gradient(rgba(30, 41, 59, 0.15), rgba(30, 41, 59, 0.75)), url('{{ trip.image_url }}');">
+{% else %}
+    <div class="hero-card">
+{% endif %}
+    <div>
+        <h2>{{ trip.title }}</h2>
+        <p>
+            {% if trip.description %}
+                {{ trip.description }}
+            {% else %}
+                Совместное планирование поездки: бюджет, голосования, участники и расходы.
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="row g-4 mt-4">
+    <div class="col-lg-8">
+
+        <div class="card-custom">
+            <h2>Участники поездки</h2>
+
+            <div class="members-list mt-3">
+                {% for member in members %}
+                    <div class="member-row">
+                        <div>
+                            <strong>{{ member.user.username }}</strong>
+                        </div>
+
+                        {% if member.role == 'owner' %}
+                            <span class="badge bg-primary">Организатор</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Участник</span>
+                        {% endif %}
+                    </div>
+                {% empty %}
+                    <p class="text-muted">Участники пока не добавлены.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card-custom mt-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2>Активные голосования</h2>
+                <a href="{% url 'create_vote' trip.id %}" class="btn btn-sm btn-primary">
+                    + Голосование
+                </a>
+            </div>
+
+            {% for vote in votes %}
+                <div class="vote-block">
+                    <h4>{{ vote.title }}</h4>
+
+                    {% if vote.description %}
+                        <p class="text-muted">{{ vote.description }}</p>
+                    {% endif %}
+
+                    <a href="{% url 'vote_detail' vote.id %}" class="btn btn-outline-primary btn-sm">
+                        Открыть голосование
+                    </a>
+                </div>
+            {% empty %}
+                <p class="text-muted mt-3">Голосований пока нет.</p>
+            {% endfor %}
+        </div>
+
+        <div class="card-custom mt-4">
+            <h2>План поездки по дням</h2>
+
+            <form method="post" action="{% url 'add_day_plan' trip.id %}" class="mt-3">
+                {% csrf_token %}
+
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        {{ day_plan_form.day_number }}
+                    </div>
+
+                    <div class="col-md-4">
+                        {{ day_plan_form.title }}
+                    </div>
+
+                    <div class="col-md-6">
+                        {{ day_plan_form.description }}
+                    </div>
+                </div>
+
+                <button class="btn btn-primary mt-3">
+                    Добавить пункт плана
+                </button>
+            </form>
+
+            <div class="mt-4">
+                {% for plan in day_plans %}
+                    <div class="expense-row">
+                        <div>
+                            <strong>День {{ plan.day_number }} — {{ plan.title }}</strong>
+                            <div class="text-muted small">
+                                {{ plan.description }}
+                            </div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="text-muted mt-3">План поездки пока не заполнен.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card-custom mt-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2>Расходы</h2>
+                <a href="{% url 'create_expense' trip.id %}" class="btn btn-sm btn-primary">
+                    + Расход
+                </a>
+            </div>
+
+            {% for expense in expenses %}
+                <div class="expense-row">
+                    <div>
+                        <strong>{{ expense.title }}</strong>
+                        <div class="text-muted small">
+                            {{ expense.get_category_display }} •
+                            {{ expense.get_expense_type_display }} •
+                            оплатил {{ expense.paid_by.username }}
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-3">
+                        <strong>{{ expense.amount }} ₽</strong>
+
+                        <form method="post" action="{% url 'delete_expense' expense.id %}">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-danger">
+                                Удалить
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% empty %}
+                <p class="text-muted mt-3">Расходов пока нет.</p>
+            {% endfor %}
+        </div>
+
+        <div class="card-custom mt-4">
+            <h2>Комментарии</h2>
+
+            <form method="post" action="{% url 'add_comment' trip.id %}" class="mt-3">
+                {% csrf_token %}
+                {{ comment_form.text }}
+
+                <button class="btn btn-primary mt-3">
+                    Отправить комментарий
+                </button>
+            </form>
+
+            <div class="mt-4">
+                {% for comment in comments %}
+                    <div class="expense-row">
+                        <div>
+                            <strong>{{ comment.user.username }}</strong>
+                            <div class="text-muted small">
+                                {{ comment.created_at }}
+                            </div>
+                            <div class="mt-2">
+                                {{ comment.text }}
+                            </div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="text-muted mt-3">Комментариев пока нет.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card-custom">
+            <h2>Бюджет поездки</h2>
+
+            <p class="text-muted mt-3">Общий бюджет</p>
+            <h1>{{ trip.budget }} ₽</h1>
+
+            <div class="budget-grid">
+                <div>
+                    <span>Потрачено</span>
+                    <strong>{{ spent }} ₽</strong>
+                </div>
+                <div>
+                    <span>Осталось</span>
+                    <strong>{{ left }} ₽</strong>
+                </div>
+            </div>
+
+            <div class="progress mt-4">
+                <div class="progress-bar" style="width: {{ budget_percent }}%"></div>
+            </div>
+
+            <p class="text-muted mt-2">{{ budget_percent }}% бюджета использовано</p>
+        </div>
+
+        <div class="card-custom mt-4">
+            <h2>Расходы по категориям</h2>
+
+            {% if category_stats %}
+                <div class="category-chart-layout">
+                    <div class="pie-chart-box">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+
+                    <div class="category-legend">
+                        {% for c in category_stats %}
+                            <div class="category-legend-row">
+                                <span class="category-dot dot-{{ forloop.counter }}"></span>
+                                <span class="category-name">{{ c.name }}</span>
+                                <strong>{{ c.amount }} ₽</strong>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% else %}
+                <p class="text-muted mt-3">Пока нет данных для графика.</p>
+            {% endif %}
+        </div>
+
+        <div class="card-custom mt-4">
+        <h2>Кто сколько потратил</h2>
+
+        {% for item in members_spending %}
+            <div class="expense-row">
+                <div>
+                    <strong>{{ item.user.username }}</strong>
+                </div>
+
+                <strong>{{ item.amount }} ₽</strong>
+            </div>
+        {% empty %}
+            <p class="text-muted mt-3">Нет данных.</p>
+        {% endfor %}
+</div>
+
+        <div class="card-custom mt-4">
+    <h2>Кто кому должен</h2>
+
+    {% if debts_you_owe %}
+        <h5 class="debt-section-title text-danger">Вы должны</h5>
+
+        {% for debt in debts_you_owe %}
+            <div class="debt-row">
+                <span>Вы должны {{ debt.to.username }}</span>
+                <strong class="text-danger">{{ debt.amount }} ₽</strong>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if debts_owed_to_you %}
+        <h5 class="debt-section-title text-success">Вам должны</h5>
+
+        {% for debt in debts_owed_to_you %}
+            <div class="debt-row">
+                <span>{{ debt.from.username }} должен вам</span>
+                <strong class="text-success">{{ debt.amount }} ₽</strong>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if other_debts %}
+        <h5 class="debt-section-title">Другие долги</h5>
+
+        {% for debt in other_debts %}
+            <div class="debt-row">
+                <span>{{ debt.from.username }} должен {{ debt.to.username }}</span>
+                <strong>{{ debt.amount }} ₽</strong>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if not debts_you_owe and not debts_owed_to_you and not other_debts %}
+        <p class="text-muted mt-3">Нет долгов — всё сбалансировано 👍</p>
+    {% endif %}
+</div>
+
+        {% if trip.owner == request.user %}
+            <div class="card-custom mt-4">
+                <h2>Управление поездкой</h2>
+
+                <form method="post" action="{% url 'delete_trip' trip.id %}">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-danger w-100 mt-3">
+                        Удалить поездку
+                    </button>
+                </form>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+{% if category_stats %}
+<script>
+    const labels = [
+        {% for c in category_stats %}
+            "{{ c.name }}",
+        {% endfor %}
+    ];
+
+    const data = [
+        {% for c in category_stats %}
+            {{ c.amount }},
+        {% endfor %}
+    ];
+
+    const ctx = document.getElementById('categoryChart');
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    '#4f46e5',
+                    '#3b82f6',
+                    '#22c55e',
+                    '#facc15',
+                    '#94a3b8'
+                ],
+                borderWidth: 3,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            cutout: '60%'
+        }
+    });
+</script>
+{% endif %}
+
+<script>
+    function autoResizeTextarea(textarea) {
+        textarea.style.height = '38px';
+        textarea.style.height = textarea.scrollHeight + 'px';
+    }
+
+    document.querySelectorAll('.auto-resize').forEach(function(textarea) {
+        autoResizeTextarea(textarea);
+
+        textarea.addEventListener('input', function() {
+            autoResizeTextarea(textarea);
+        });
+    });
+</script>
+
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Настройки</h1>
+<p class="page-subtitle">Редактирование данных профиля</p>
+
+<div class="card-custom mt-4" style="max-width: 650px;">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Имя</label>
+            {{ form.first_name }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Фамилия</label>
+            {{ form.last_name }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            {{ form.email }}
+        </div>
+
+        <button class="btn btn-primary">
+            Сохранить
+        </button>
+
+        <a href="{% url 'profile' %}" class="btn btn-outline-primary ms-2">
+            Назад
+        </a>
+    </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Уведомления</h1>
+<p class="page-subtitle">Последние действия в ваших поездках</p>
+
+<div class="card-custom mt-4">
+    <h2>Новые голосования</h2>
+
+    {% for vote in recent_votes %}
+        <div class="expense-row">
+            <div>
+                <strong>{{ vote.title }}</strong>
+                <div class="text-muted small">{{ vote.trip.title }}</div>
+            </div>
+
+            <a href="{% url 'vote_detail' vote.id %}" class="btn btn-sm btn-outline-primary">
+                Открыть
+            </a>
+        </div>
+    {% empty %}
+        <p class="text-muted mt-3">Новых голосований нет.</p>
+    {% endfor %}
+</div>
+
+<div class="card-custom mt-4">
+    <h2>Новые расходы</h2>
+
+    {% for expense in recent_expenses %}
+        <div class="expense-row">
+            <div>
+                <strong>{{ expense.title }}</strong>
+                <div class="text-muted small">
+                    {{ expense.trip.title }} • {{ expense.amount }} ₽ • оплатил {{ expense.paid_by.username }}
+                </div>
+            </div>
+
+            <a href="{% url 'trip_detail' expense.trip.id %}" class="btn btn-sm btn-outline-primary">
+                К поездке
+            </a>
+        </div>
+    {% empty %}
+        <p class="text-muted mt-3">Новых расходов нет.</p>
+    {% endfor %}
+</div>
+
+{% endblock %}

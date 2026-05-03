@@ -1,0 +1,44 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Профиль</h1>
+<p class="page-subtitle">Информация о вашем аккаунте</p>
+
+<div class="card-custom mt-4" style="max-width: 700px;">
+    <h2>{{ request.user.username }}</h2>
+
+    <div class="mt-4">
+        <p><strong>Email:</strong> {{ request.user.email|default:"не указан" }}</p>
+        <p><strong>Имя:</strong> {{ request.user.first_name|default:"не указано" }}</p>
+        <p><strong>Фамилия:</strong> {{ request.user.last_name|default:"не указана" }}</p>
+        <p><strong>Количество поездок:</strong> {{ trips_count }}</p>
+    </div>
+
+    <a href="{% url 'settings' %}" class="btn btn-primary mt-3">
+        Редактировать профиль
+    </a>
+</div>
+
+<div class="card-custom mt-4">
+    <h2>Мои поездки</h2>
+
+    {% for trip in user_trips %}
+        <div class="expense-row">
+            <div>
+                <strong>{{ trip.title }}</strong>
+                <div class="text-muted small">
+                    {{ trip.start_date }} — {{ trip.end_date }} • {{ trip.destination }}
+                </div>
+            </div>
+
+            <a href="{% url 'trip_detail' trip.id %}" class="btn btn-sm btn-outline-primary">
+                Открыть
+            </a>
+        </div>
+    {% empty %}
+        <p class="text-muted mt-3">У вас пока нет поездок.</p>
+    {% endfor %}
+</div>
+
+{% endblock %}

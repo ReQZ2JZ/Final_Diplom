@@ -1,0 +1,31 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Добавить участника</h1>
+<p class="page-subtitle">{{ trip.title }}</p>
+
+<div class="card-custom mt-4" style="max-width: 600px;">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Username пользователя</label>
+            {{ form.username }}
+
+            {% if form.username.errors %}
+                <div class="text-danger mt-2">
+                    {{ form.username.errors }}
+                </div>
+            {% endif %}
+        </div>
+
+        <button class="btn btn-primary">Добавить</button>
+
+        <a href="{% url 'trip_detail' trip.id %}" class="btn btn-outline-primary ms-2">
+            Назад
+        </a>
+    </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Создать поездку</h1>
+
+<div class="card-custom mt-4" style="max-width: 700px;">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Название</label>
+            {{ form.title }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Описание</label>
+            {{ form.description }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Направление</label>
+            {{ form.destination }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Дата начала</label>
+            {{ form.start_date }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Дата окончания</label>
+            {{ form.end_date }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Бюджет</label>
+            {{ form.budget }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Ссылка на изображение</label>
+            {{ form.image_url }}
+            <div class="form-text">
+                Можно вставить ссылку на фото города. Если оставить пустым, будет показан градиент.
+            </div>
+        </div>
+
+        <button class="btn btn-primary">Создать</button>
+    </form>
+</div>
+
+{% endblock %}

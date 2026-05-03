@@ -1,0 +1,47 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Мои поездки</h1>
+<p class="page-subtitle">Планируйте путешествия, голосуйте и управляйте общим бюджетом</p>
+
+<div class="row g-4 mt-2">
+    {% for trip in trips %}
+        <div class="col-md-6 col-xl-4">
+            <div class="trip-card">
+
+                {% if trip.image_url %}
+                    <div class="trip-image" style="background-image: url('{{ trip.image_url }}');"></div>
+                {% else %}
+                    <div class="trip-image"></div>
+                {% endif %}
+
+                <div class="trip-content">
+                    <h3>{{ trip.title }}</h3>
+                    <p class="text-muted">
+                        {{ trip.start_date }} — {{ trip.end_date }}
+                    </p>
+
+                    <div class="budget-box">
+                        <div>
+                            <span>Бюджет</span>
+                            <strong>{{ trip.budget }} ₽</strong>
+                        </div>
+                        <div>
+                            <span>Направление</span>
+                            <strong>{{ trip.destination }}</strong>
+                        </div>
+                    </div>
+
+                    <a href="{% url 'trip_detail' trip.id %}" class="btn btn-primary w-100 mt-3">
+                        Открыть поездку
+                    </a>
+                </div>
+            </div>
+        </div>
+    {% empty %}
+        <p class="text-muted mt-4">У вас пока нет поездок.</p>
+    {% endfor %}
+</div>
+
+{% endblock %}

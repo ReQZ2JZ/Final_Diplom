@@ -1,0 +1,173 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<div class="trip-header">
+    <div>
+        <h1>🗺 ИИ-экскурсия</h1>
+        <p>Поездка: <strong>{{ trip.title }}</strong> · {{ trip.destination }}</p>
+    </div>
+    <a href="{% url 'trip_detail' trip.id %}" class="btn btn-outline-primary">← Назад к поездке</a>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-lg-5">
+        <div class="card-custom">
+            <h2>Настройки маршрута</h2>
+
+            <form method="post" class="mt-3">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label">Город</label>
+                    <input type="text" name="city" class="form-control" value="{{ city }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Продолжительность (часов)</label>
+                    <select name="duration" class="form-select">
+                        <option value="2">2 часа</option>
+                        <option value="3" selected>3 часа</option>
+                        <option value="4">4 часа</option>
+                        <option value="6">6 часов</option>
+                        <option value="8">Целый день</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Интересы (необязательно)</label>
+                    <input type="text" name="interests" class="form-control"
+                           placeholder="история, архитектура, еда...">
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">
+                    ✨ Построить маршрут
+                </button>
+            </form>
+        </div>
+
+        {% if error %}
+            <div class="alert alert-danger mt-3">{{ error }}</div>
+        {% endif %}
+
+        {% if route_text %}
+            <div class="card-custom mt-4">
+                <h2>Маршрут от GigaChat</h2>
+                <div class="mt-3" style="white-space: pre-line; line-height: 1.7;">{{ route_text }}</div>
+                <button id="buildRouteBtn" class="btn btn-primary w-100 mt-3" onclick="buildRoute()">
+                    🧭 Проложить маршрут на карте
+                </button>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card-custom" style="padding: 0; overflow: hidden; border-radius: 16px;">
+            <div id="map" style="width: 100%; height: 560px;"></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://api-maps.yandex.ru/2.1/?apikey=ec2ace5f-0db6-4222-a1e0-d621c581ec15&lang=ru_RU" type="text/javascript"></script>
+
+<script>
+    const placesData = {{ places_json|safe }};
+    const cityName = "{{ city|escapejs }}";
+    let mapInstance = null;
+
+    ymaps.ready(function () {
+        mapInstance = new ymaps.Map('map', {
+            center: [55.751244, 37.618423],
+            zoom: 12,
+            controls: ['zoomControl', 'fullscreenControl']
+        });
+
+        ymaps.geocode(cityName, { results: 1 }).then(function (res) {
+            const obj = res.geoObjects.get(0);
+            if (obj) mapInstance.setCenter(obj.geometry.getCoordinates(), 13);
+        });
+    });
+
+    function buildRoute() {
+        if (placesData.length === 0) return;
+
+        const btn = document.getElementById('buildRouteBtn');
+        btn.disabled = true;
+        btn.textContent = 'Прокладываю...';
+
+        mapInstance.geoObjects.removeAll();
+
+        const geocodePromises = placesData.map(function (place) {
+            return ymaps.geocode(cityName + ', ' + place, { results: 1 });
+        });
+
+        Promise.all(geocodePromises).then(function (results) {
+            const coords = [];
+
+            results.forEach(function (res, idx) {
+                const obj = res.geoObjects.get(0);
+                if (!obj) return;
+
+                const coord = obj.geometry.getCoordinates();
+                coords.push(coord);
+
+                const placemark = new ymaps.Placemark(coord, {
+                    balloonContentHeader: '<strong>' + (idx + 1) + '. ' + placesData[idx] + '</strong>',
+                    balloonContentBody: 'Точка маршрута №' + (idx + 1),
+                    iconContent: idx + 1
+                }, {
+                    preset: 'islands#blueCircleIcon'
+                });
+
+                mapInstance.geoObjects.add(placemark);
+            });
+
+            if (coords.length < 2) {
+                if (coords.length === 1) mapInstance.setCenter(coords[0], 14);
+                btn.disabled = false;
+                btn.textContent = '🧭 Проложить маршрут на карте';
+                return;
+            }
+
+            ymaps.route(coords, {
+                mapStateAutoApply: true,
+                routingMode: 'pedestrian'
+            }).then(function (route) {
+                route.getPaths().each(function (path) {
+                    path.getSegments().each(function (segment) {
+                        segment.options.set({
+                            strokeColor: '#4f46e5',
+                            strokeWidth: 4,
+                            strokeOpacity: 0.85
+                        });
+                    });
+                });
+
+                route.getWayPoints().each(function (point) {
+                    point.options.set('visible', false);
+                });
+
+                mapInstance.geoObjects.add(route);
+
+                const bounds = ymaps.util.bounds.fromPoints(coords);
+                mapInstance.setBounds(bounds, { checkZoomRange: true, zoomMargin: 60 });
+
+                btn.textContent = '✅ Маршрут построен';
+            }).catch(function () {
+                const polyline = new ymaps.Polyline(coords, {}, {
+                    strokeColor: '#4f46e5',
+                    strokeWidth: 4,
+                    strokeOpacity: 0.8
+                });
+                mapInstance.geoObjects.add(polyline);
+                const bounds = ymaps.util.bounds.fromPoints(coords);
+                mapInstance.setBounds(bounds, { checkZoomRange: true, zoomMargin: 60 });
+
+                btn.disabled = false;
+                btn.textContent = '🧭 Проложить маршрут на карте';
+            });
+        });
+    }
+</script>
+
+{% endblock %}

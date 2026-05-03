@@ -1,0 +1,48 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Добавить расход</h1>
+<p class="page-subtitle">{{ trip.title }}</p>
+
+<div class="card-custom mt-4" style="max-width: 700px;">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Название расхода</label>
+            {{ form.title }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Сумма</label>
+            {{ form.amount }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Категория</label>
+            {{ form.category }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Тип расхода</label>
+            {{ form.expense_type }}
+            <div class="form-text">
+                Общий расход делится между участниками. Личный расход учитывается в бюджете, но не создаёт долгов.
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Кто оплатил</label>
+            {{ form.paid_by }}
+        </div>
+
+        <button class="btn btn-primary">Добавить расход</button>
+
+        <a href="{% url 'trip_detail' trip.id %}" class="btn btn-outline-primary ms-2">
+            Назад
+        </a>
+    </form>
+</div>
+
+{% endblock %}

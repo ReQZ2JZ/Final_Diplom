@@ -1,0 +1,51 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>TripTogether</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'trips/css/style.css' %}">
+</head>
+<body>
+
+<div class="app">
+    <aside class="sidebar">
+        <div class="logo">✈ TripTogether</div>
+
+        <a href="{% url 'dashboard' %}" class="menu-link">Мои поездки</a>
+
+        <a href="{% url 'notifications' %}" class="menu-link notification-link">
+            <span>Уведомления</span>
+
+            {% if notifications_count > 0 %}
+                <span class="notification-badge">{{ notifications_count }}</span>
+            {% endif %}
+        </a>
+
+        <a href="{% url 'profile' %}" class="menu-link">Профиль</a>
+        <a href="{% url 'statistics' %}" class="menu-link">Статистика</a>
+        <a href="{% url 'settings' %}" class="menu-link">Настройки</a>
+
+        <a href="{% url 'create_trip' %}" class="btn btn-primary w-100 mt-4">
+            + Создать поездку
+        </a>
+
+        <form method="post" action="{% url 'logout' %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary w-100">
+                Выйти
+            </button>
+        </form>
+    </aside>
+
+    <main class="content">
+        {% block content %}
+        {% endblock %}
+    </main>
+</div>
+
+</body>
+</html>

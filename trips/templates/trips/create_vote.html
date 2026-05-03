@@ -1,0 +1,52 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">Создать голосование</h1>
+<p class="page-subtitle">{{ trip.title }}</p>
+
+<div class="card-custom mt-4" style="max-width: 700px;">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Название голосования</label>
+            {{ form.title }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Описание</label>
+            {{ form.description }}
+        </div>
+
+        <hr>
+
+        <div class="mb-3">
+            <label class="form-label">Вариант 1</label>
+            {{ form.option_1 }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Вариант 2</label>
+            {{ form.option_2 }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Вариант 3</label>
+            {{ form.option_3 }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Вариант 4</label>
+            {{ form.option_4 }}
+        </div>
+
+        <button class="btn btn-primary">Создать голосование</button>
+
+        <a href="{% url 'trip_detail' trip.id %}" class="btn btn-outline-primary ms-2">
+            Назад
+        </a>
+    </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends 'trips/base.html' %}
+
+{% block content %}
+
+<h1 class="page-title">{{ vote.title }}</h1>
+<p class="page-subtitle">
+    {{ vote.trip.title }}
+    {% if vote.description %}
+        • {{ vote.description }}
+    {% endif %}
+</p>
+
+<div class="card-custom mt-4" style="max-width: 760px;">
+    <form method="post" action="{% url 'submit_vote' vote.id %}">
+        {% csrf_token %}
+
+        {% for item in option_stats %}
+            <div class="vote-choice">
+                <label class="vote-radio">
+                    <input type="radio" name="option_id" value="{{ item.option.id }}"
+                        {% if user_answer and user_answer.option.id == item.option.id %}checked{% endif %}>
+
+                    <span>{{ item.option.title }}</span>
+                </label>
+
+                <div class="d-flex justify-content-between mt-2">
+                    <small class="text-muted">{{ item.count }} голосов</small>
+                    <small class="text-muted">{{ item.percent }}%</small>
+                </div>
+
+                <div class="progress mt-1">
+                    <div class="progress-bar" style="width: {{ item.percent }}%"></div>
+                </div>
+            </div>
+        {% endfor %}
+
+        <button class="btn btn-primary mt-3">Проголосовать</button>
+
+        <a href="{% url 'trip_detail' vote.trip.id %}" class="btn btn-outline-primary mt-3 ms-2">
+            Назад к поездке
+        </a>
+    </form>
+</div>
+
+{% endblock %}
