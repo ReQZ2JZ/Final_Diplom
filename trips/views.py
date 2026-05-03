@@ -3,8 +3,9 @@ from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
+from django.core.cache import cache
 from django.db.models import Q, Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.conf import settings as django_settings
 
 from reportlab.pdfgen import canvas
@@ -15,6 +16,8 @@ import os
 import requests
 import uuid
 import json
+import re
+import time
 
 from .models import (
     Trip,
@@ -188,7 +191,8 @@ def trip_detail(request, trip_id):
             debts_owed_to_you.append(debt)
         else:
             other_debts.append(debt)
-        category_stats = get_category_stats(expenses)
+
+    category_stats = get_category_stats(expenses)
 
     comment_form = TripCommentForm()
     day_plan_form = DayPlanForm()
@@ -685,31 +689,238 @@ def statistics(request):
 
 
 def _get_gigachat_token():
-    resp = requests.post(
-        "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
-        headers={
-            "Authorization": f"Basic {django_settings.GIGACHAT_KEY}",
-            "RqUID": str(uuid.uuid4()),
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        data={"scope": "GIGACHAT_API_PERS"},
-        verify=False,
-        timeout=10,
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
+    cached = cache.get("gigachat_access_token")
+    if cached:
+        return cached
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+                headers={
+                    "Authorization": f"Basic {django_settings.GIGACHAT_KEY}",
+                    "RqUID": str(uuid.uuid4()),
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data={"scope": "GIGACHAT_API_PERS"},
+                verify=False,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            token = payload["access_token"]
+            expires_at = int(payload.get("expires_at", 0))
+
+            # В API часто приходит expires_at в миллисекундах epoch.
+            if expires_at > 0:
+                now_ms = int(time.time() * 1000)
+                ttl_seconds = max(60, (expires_at - now_ms) // 1000 - 120)
+            else:
+                ttl_seconds = 25 * 60
+
+            cache.set("gigachat_access_token", token, timeout=ttl_seconds)
+            return token
+        except requests.exceptions.RequestException as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(1.2 * (attempt + 1))
+
+    raise RuntimeError(f"Не удалось получить токен GigaChat после 3 попыток: {last_error}")
 
 
 def _ask_gigachat(token, prompt):
-    resp = requests.post(
-        "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"model": "GigaChat", "messages": [{"role": "user", "content": prompt}], "temperature": 0.7},
-        verify=False,
-        timeout=30,
+    last_error = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"model": "GigaChat", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2},
+                verify=False,
+                timeout=35,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except requests.exceptions.RequestException as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(1.2 * (attempt + 1))
+
+    raise RuntimeError(f"Не удалось получить ответ GigaChat после 3 попыток: {last_error}")
+
+
+def _extract_first_json_object(text):
+    start = text.find('{')
+    end = text.rfind('}')
+    if start == -1 or end == -1 or start >= end:
+        return None
+    return text[start:end + 1]
+
+
+def _normalize_place_query(city, place):
+    value = str(place).strip()
+    if not value:
+        return ''
+
+    value = re.sub(r'^\d+[\).\s-]*', '', value).strip()
+    value = re.split(r'\s[—:-]\s', value, maxsplit=1)[0].strip()
+    value = value.strip('.,;: ')
+    if not value:
+        return ''
+
+    if value.lower().startswith(city.lower()):
+        return value
+    return f"{city}, {value}"
+
+
+def _extract_places_from_text(route_text, city):
+    places = []
+
+    # Частый случай: "1. ... 2. ... 3. ..." в одной строке.
+    numbered_chunks = re.split(r'(?:^|\s)(?:\d+[\)\.])\s+', route_text)
+    candidates = [chunk.strip() for chunk in numbered_chunks if chunk.strip()]
+
+    if not candidates:
+        candidates = [line.strip() for line in route_text.splitlines() if line.strip()]
+
+    for raw in candidates:
+        # Берем только заголовок места до первого предложения/длинного тире.
+        head = re.split(r'[.!?]', raw, maxsplit=1)[0].strip()
+        if ' — ' in head:
+            head = head.split(' — ', 1)[0].strip()
+        if ' - ' in head:
+            head = head.split(' - ', 1)[0].strip()
+
+        candidate = _normalize_place_query(city, head or raw)
+        if candidate:
+            places.append(candidate)
+
+    # Убираем дубли, сохраняя порядок.
+    return list(dict.fromkeys(places))[:7]
+
+
+def _parse_place_item(city, item):
+    if isinstance(item, str):
+        query = _normalize_place_query(city, item)
+        return query, None
+
+    if isinstance(item, dict):
+        title = (
+            item.get("title")
+            or item.get("name")
+            or item.get("place")
+            or item.get("address")
+            or ""
+        )
+        query = _normalize_place_query(city, title)
+
+        lat = item.get("lat")
+        lon = item.get("lon")
+        if lat is None:
+            lat = item.get("latitude")
+        if lon is None:
+            lon = item.get("longitude")
+
+        try:
+            if lat is not None and lon is not None:
+                return query, [float(lat), float(lon)]
+        except (TypeError, ValueError):
+            pass
+
+        return query, None
+
+    return "", None
+
+
+def _geocode_place_nominatim(place_query):
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={
+                "q": place_query,
+                "format": "jsonv2",
+                "limit": 1,
+            },
+            headers={"User-Agent": "trip_together/1.0"},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not data:
+            return None
+
+        first = data[0]
+        lat = float(first.get("lat"))
+        lon = float(first.get("lon"))
+        return [lat, lon]
+    except Exception:
+        return None
+
+
+def _geocode_place_yandex(place_query):
+    yandex_key = getattr(
+        django_settings,
+        "YANDEX_MAPS_API_KEY",
+        "ec2ace5f-0db6-4222-a1e0-d621c581ec15",
     )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    if not yandex_key:
+        return None
+
+    try:
+        resp = requests.get(
+            "https://geocode-maps.yandex.ru/1.x/",
+            params={
+                "apikey": yandex_key,
+                "format": "json",
+                "geocode": place_query,
+                "results": 1,
+                "lang": "ru_RU",
+            },
+            timeout=8,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        members = (
+            data.get("response", {})
+            .get("GeoObjectCollection", {})
+            .get("featureMember", [])
+        )
+        if not members:
+            return None
+
+        pos = (
+            members[0]
+            .get("GeoObject", {})
+            .get("Point", {})
+            .get("pos", "")
+            .split()
+        )
+        if len(pos) != 2:
+            return None
+
+        lon, lat = float(pos[0]), float(pos[1])
+        return [lat, lon]
+    except Exception:
+        return None
+
+
+def _geocode_place(place_query):
+    # Сначала Яндекс (лучше для российских адресов), затем Nominatim как резерв.
+    coords = _geocode_place_yandex(place_query)
+    if coords:
+        return coords
+    return _geocode_place_nominatim(place_query)
+
+
+@login_required
+def geocode_place_api(request):
+    query = (request.GET.get('q') or '').strip()
+    if not query:
+        return JsonResponse({"ok": False, "coords": None, "error": "empty_query"}, status=400)
+
+    coords = _geocode_place(query)
+    return JsonResponse({"ok": bool(coords), "coords": coords})
 
 
 @login_required
@@ -721,6 +932,7 @@ def excursion(request, trip_id):
 
     route_text = None
     places = []
+    places_coords = []
     error = None
     city = trip.destination
 
@@ -730,23 +942,76 @@ def excursion(request, trip_id):
         duration = request.POST.get('duration', '3')
 
         prompt = (
-            f"Составь экскурсионный маршрут по городу {city} на {duration} часа(ов). "
+            f"Ты локальный гид по городу {city}. "
+            f"Составь пеший экскурсионный маршрут на {duration} часа(ов). "
             f"Интересы: {interests if interests else 'общие достопримечательности'}. "
-            f"Перечисли 5-7 мест в формате нумерованного списка. "
-            f"Для каждого места укажи название и краткое описание (1-2 предложения). "
-            f"В самом конце добавь строку PLACES: и перечисли только названия мест через точку с запятой."
+            f"Выбери 5-7 реальных мест в этом городе.\n\n"
+            f"Верни ответ СТРОГО в JSON и больше ничего (без markdown и комментариев) в формате:\n"
+            f"{{\n"
+            f"  \"route_text\": \"нумерованный маршрут с кратким описанием каждого места (1-2 предложения)\",\n"
+            f"  \"places\": [\n"
+            f"    {{\"title\": \"<название места>\", \"address\": \"{city}, <улица/номер или район>\", \"lat\": 55.75, \"lon\": 37.61}},\n"
+            f"    {{\"title\": \"...\", \"address\": \"...\", \"lat\": ..., \"lon\": ...}}\n"
+            f"  ]\n"
+            f"}}\n\n"
+            f"Требования к places:\n"
+            f"- для каждого места обязательно укажи координаты lat/lon;\n"
+            f"- координаты должны быть внутри города {city};\n"
+            f"- address начинай с города \"{city}\";\n"
+            f"- не используй общие формулировки без конкретики."
         )
 
         try:
             token = _get_gigachat_token()
             full_response = _ask_gigachat(token, prompt)
 
-            if 'PLACES:' in full_response:
-                parts = full_response.split('PLACES:')
-                route_text = parts[0].strip()
-                places = [p.strip() for p in parts[1].strip().split(';') if p.strip()]
-            else:
-                route_text = full_response.strip()
+            try:
+                json_payload = full_response
+                if not full_response.strip().startswith('{'):
+                    extracted = _extract_first_json_object(full_response)
+                    if extracted:
+                        json_payload = extracted
+
+                data = json.loads(json_payload)
+                route_text = str(data.get('route_text', '')).strip()
+                raw_places = data.get('places', [])
+
+                if isinstance(raw_places, list):
+                    parsed_places = [_parse_place_item(city, p) for p in raw_places]
+                    places = []
+                    places_coords = []
+                    for query, coord in parsed_places:
+                        if not query:
+                            continue
+                        places.append(query)
+                        places_coords.append(coord)
+                elif isinstance(raw_places, str):
+                    places = [_normalize_place_query(city, p) for p in raw_places.split(';')]
+                    places = [p for p in places if p]
+                else:
+                    places = []
+
+                if not route_text:
+                    route_text = full_response.strip()
+
+                if not places and route_text:
+                    places = _extract_places_from_text(route_text, city)
+            except json.JSONDecodeError:
+                # Fallback для старого формата, если модель не вернула JSON.
+                if 'PLACES:' in full_response:
+                    parts = full_response.split('PLACES:')
+                    route_text = parts[0].strip()
+                    places = [_normalize_place_query(city, p) for p in parts[1].strip().split(';')]
+                    places = [p for p in places if p]
+                else:
+                    route_text = full_response.strip()
+                    places = _extract_places_from_text(route_text, city)
+
+            if places:
+                if len(places_coords) == len(places) and any(c is not None for c in places_coords):
+                    pass
+                else:
+                    places_coords = [_geocode_place(p) for p in places]
         except Exception as e:
             error = f"Ошибка при обращении к GigaChat: {e}"
 
@@ -755,5 +1020,6 @@ def excursion(request, trip_id):
         'city': city,
         'route_text': route_text,
         'places_json': json.dumps(places, ensure_ascii=False),
+        'places_coords_json': json.dumps(places_coords, ensure_ascii=False),
         'error': error,
     })

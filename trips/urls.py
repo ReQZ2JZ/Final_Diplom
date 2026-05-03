@@ -28,4 +28,5 @@ urlpatterns = [
 
     path('trip/<int:trip_id>/pdf/', views.trip_pdf_report, name='trip_pdf_report'),
     path('trip/<int:trip_id>/excursion/', views.excursion, name='excursion'),
+    path('api/geocode-place/', views.geocode_place_api, name='geocode_place_api'),
 ]

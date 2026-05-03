@@ -2,5 +2,6 @@
 Для простроения маршрутов маршрутов будем использовать API GigaChat 
 Мой ключ: MDE5ZGVlZDMtMWE0My03NWE1LWIzMTctODI0OGQwMTU2MzhjOmU1NGVjNmVhLTlkMzMtNGQ2Yi04YzU3LTc4ZDU5NTQ2YzhjNA==
 
-  git config --global user.email "you@example.com"
-  git config --global user.name "Your Name"
+  https://github.com/ReQZ2JZ/Final_Diplom
+
+Сделай E2E тест для построения маршрута http://127.0.0.1:8000/trip/2/excursion/

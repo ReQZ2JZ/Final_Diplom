@@ -53,7 +53,8 @@
         {% if route_text %}
             <div class="card-custom mt-4">
                 <h2>Маршрут от GigaChat</h2>
-                <div class="mt-3" style="white-space: pre-line; line-height: 1.7;">{{ route_text }}</div>
+                <div id="routeTextContent" class="mt-3" style="white-space: pre-line; line-height: 1.7;">{{ route_text }}</div>
+                <div id="routeStatus" class="mt-2 text-muted" style="font-size: 14px;"></div>
                 <button id="buildRouteBtn" class="btn btn-primary w-100 mt-3" onclick="buildRoute()">
                     🧭 Проложить маршрут на карте
                 </button>
@@ -72,8 +73,156 @@
 
 <script>
     const placesData = {{ places_json|safe }};
+    const placesCoordsData = {{ places_coords_json|safe }};
     const cityName = "{{ city|escapejs }}";
     let mapInstance = null;
+
+    function geocodeViaBackend(query) {
+        const url = '/api/geocode-place/?q=' + encodeURIComponent(query);
+        return fetch(url, { method: 'GET' })
+            .then(function (resp) {
+                if (!resp.ok) return null;
+                return resp.json();
+            })
+            .then(function (data) {
+                if (!data || !data.ok || !Array.isArray(data.coords) || data.coords.length !== 2) {
+                    return null;
+                }
+                return {
+                    geometry: {
+                        getCoordinates: function () {
+                            return data.coords;
+                        }
+                    }
+                };
+            })
+            .catch(function () {
+                return null;
+            });
+    }
+
+    function geocodeWithFallback(place) {
+        const normalizedPlace = String(place || '').trim();
+        if (!normalizedPlace) return Promise.resolve(null);
+
+        const cleaned = normalizedPlace
+            .replace(/\(.*?\)/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const queries = [];
+        const lowerCity = cityName.toLowerCase();
+
+        function addQuery(q) {
+            const value = String(q || '').trim();
+            if (value) queries.push(value);
+        }
+
+        // Исходная строка и вариант без скобок.
+        addQuery(normalizedPlace);
+        if (cleaned !== normalizedPlace) addQuery(cleaned);
+
+        // Варианты с/без города.
+        if (!cleaned.toLowerCase().startsWith(lowerCity)) {
+            addQuery(cityName + ', ' + cleaned);
+            addQuery(cleaned + ', ' + cityName);
+        } else {
+            const noCity = cleaned.slice(cityName.length).replace(/^,\s*/, '').trim();
+            addQuery(noCity);
+        }
+
+        // Прогрессивное упрощение по запятым: первые 3/2/1 частей.
+        const parts = cleaned.split(',').map(function (p) { return p.trim(); }).filter(Boolean);
+        if (parts.length >= 3) addQuery(parts.slice(0, 3).join(', '));
+        if (parts.length >= 2) addQuery(parts.slice(0, 2).join(', '));
+        if (parts.length >= 1) addQuery(parts[0]);
+
+        if (parts.length >= 1 && parts[0].toLowerCase() !== lowerCity) {
+            addQuery(cityName + ', ' + parts[0]);
+        }
+
+        // Сверхкороткий запрос: первые 3-4 слова.
+        const words = cleaned.split(/\s+/).filter(Boolean);
+        if (words.length >= 3) {
+            const shortTitle = words.slice(0, 4).join(' ');
+            addQuery(shortTitle);
+            addQuery(cityName + ', ' + shortTitle);
+        }
+
+        // Убираем дубли и пробуем варианты по очереди.
+        const uniqueQueries = [...new Set(queries)];
+
+        function tryQuery(index) {
+            if (index >= uniqueQueries.length) {
+                return Promise.resolve(null);
+            }
+
+            return ymaps.geocode(uniqueQueries[index], { results: 1 })
+                .then(function (res) {
+                    const obj = res.geoObjects.get(0);
+                    if (obj) return obj;
+                    return geocodeViaBackend(uniqueQueries[index]).then(function (backendObj) {
+                        if (backendObj) return backendObj;
+                        return tryQuery(index + 1);
+                    });
+                })
+                .catch(function () {
+                    return geocodeViaBackend(uniqueQueries[index]).then(function (backendObj) {
+                        if (backendObj) return backendObj;
+                        return tryQuery(index + 1);
+                    });
+                });
+        }
+
+        return tryQuery(0);
+    }
+
+    function extractPlacesFromRouteText() {
+        const node = document.getElementById('routeTextContent');
+        if (!node) return [];
+
+        const text = String(node.textContent || '').trim();
+        if (!text) return [];
+
+        const parsed = [];
+
+        const re = /(?:^|\s)(\d+[\)\.])\s*([\s\S]*?)(?=(?:\s\d+[\)\.]\s)|$)/g;
+        let match;
+        while ((match = re.exec(text)) !== null) {
+            const chunk = String(match[2] || '').trim();
+            if (!chunk) continue;
+            let value = chunk.split(/[.!?]/)[0].trim();
+            if (value.includes(' — ')) value = value.split(' — ')[0].trim();
+            if (value.includes(' - ')) value = value.split(' - ')[0].trim();
+            if (value.includes(':')) value = value.split(':')[0].trim();
+            if (value) parsed.push(value);
+        }
+
+        if (parsed.length === 0) {
+            const lines = text.split('\n').map(function (line) { return line.trim(); }).filter(Boolean);
+            lines.forEach(function (line) {
+                let value = line.replace(/^\d+[\)\.]\s*/, '').trim();
+                value = value.split(/[.!?]/)[0].trim();
+                if (value.includes(' — ')) value = value.split(' — ')[0].trim();
+                if (value.includes(' - ')) value = value.split(' - ')[0].trim();
+                if (value.includes(':')) value = value.split(':')[0].trim();
+                if (value) parsed.push(value);
+            });
+        }
+
+        return [...new Set(parsed)].slice(0, 10);
+    }
+
+    function normalizeCandidatePlace(raw) {
+        let value = String(raw || '').trim();
+        if (!value) return '';
+        value = value.replace(/^\d+[\)\.]\s*/, '').trim();
+        value = value.replace(/\(.*?\)/g, ' ').replace(/\s+/g, ' ').trim();
+        if (value.includes(' — ')) value = value.split(' — ')[0].trim();
+        if (value.includes(' - ')) value = value.split(' - ')[0].trim();
+        if (value.includes(':')) value = value.split(':')[0].trim();
+        value = value.replace(/[.,;:]+$/g, '').trim();
+        return value;
+    }
 
     ymaps.ready(function () {
         mapInstance = new ymaps.Map('map', {
@@ -85,11 +234,25 @@
         ymaps.geocode(cityName, { results: 1 }).then(function (res) {
             const obj = res.geoObjects.get(0);
             if (obj) mapInstance.setCenter(obj.geometry.getCoordinates(), 13);
+        }).catch(function () {
+            // Оставляем центр по умолчанию, если геокодер недоступен.
         });
     });
 
     function buildRoute() {
-        if (placesData.length === 0) return;
+        if (!window.ymaps || !mapInstance) {
+            alert('Карта еще не загрузилась. Попробуйте через пару секунд.');
+            return;
+        }
+
+        const fromApi = Array.isArray(placesData) ? placesData : [];
+        const fromText = extractPlacesFromRouteText();
+        const mergedPlaces = [...fromApi, ...fromText]
+            .map(normalizeCandidatePlace)
+            .filter(Boolean);
+        const effectivePlaces = [...new Set(mergedPlaces)].slice(0, 8);
+
+        if (effectivePlaces.length === 0) return;
 
         const btn = document.getElementById('buildRouteBtn');
         btn.disabled = true;
@@ -97,22 +260,37 @@
 
         mapInstance.geoObjects.removeAll();
 
-        const geocodePromises = placesData.map(function (place) {
-            return ymaps.geocode(cityName + ', ' + place, { results: 1 });
+        const geocodePromises = effectivePlaces.map(function (place, idx) {
+            const serverCoord = Array.isArray(placesCoordsData) ? placesCoordsData[idx] : null;
+            if (Array.isArray(serverCoord) && serverCoord.length === 2) {
+                return Promise.resolve({
+                    geometry: {
+                        getCoordinates: function () {
+                            return serverCoord;
+                        }
+                    }
+                });
+            }
+            return geocodeWithFallback(place);
         });
 
-        Promise.all(geocodePromises).then(function (results) {
-            const coords = [];
+        const resultsPromise = Promise.allSettled(geocodePromises);
 
-            results.forEach(function (res, idx) {
-                const obj = res.geoObjects.get(0);
+        resultsPromise.then(function (results) {
+            const coords = [];
+            let resolvedCount = 0;
+
+            results.forEach(function (result, idx) {
+                if (result.status !== 'fulfilled' || !result.value) return;
+                resolvedCount += 1;
+                const obj = result.value;
                 if (!obj) return;
 
                 const coord = obj.geometry.getCoordinates();
                 coords.push(coord);
 
                 const placemark = new ymaps.Placemark(coord, {
-                    balloonContentHeader: '<strong>' + (idx + 1) + '. ' + placesData[idx] + '</strong>',
+                    balloonContentHeader: '<strong>' + (idx + 1) + '. ' + effectivePlaces[idx] + '</strong>',
                     balloonContentBody: 'Точка маршрута №' + (idx + 1),
                     iconContent: idx + 1
                 }, {
@@ -124,6 +302,13 @@
 
             if (coords.length < 2) {
                 if (coords.length === 1) mapInstance.setCenter(coords[0], 14);
+                if (resolvedCount === 0) {
+                    alert('Не удалось распознать точки маршрута. Попробуйте снова или уточните интересы.');
+                }
+                const statusNode = document.getElementById('routeStatus');
+                if (statusNode) {
+                    statusNode.textContent = 'Распознано точек: ' + resolvedCount + ' из ' + effectivePlaces.length;
+                }
                 btn.disabled = false;
                 btn.textContent = '🧭 Проложить маршрут на карте';
                 return;
@@ -153,6 +338,10 @@
                 mapInstance.setBounds(bounds, { checkZoomRange: true, zoomMargin: 60 });
 
                 btn.textContent = '✅ Маршрут построен';
+                const statusNode = document.getElementById('routeStatus');
+                if (statusNode) {
+                    statusNode.textContent = 'Распознано точек: ' + resolvedCount + ' из ' + effectivePlaces.length;
+                }
             }).catch(function () {
                 const polyline = new ymaps.Polyline(coords, {}, {
                     strokeColor: '#4f46e5',
@@ -165,6 +354,10 @@
 
                 btn.disabled = false;
                 btn.textContent = '🧭 Проложить маршрут на карте';
+                const statusNode = document.getElementById('routeStatus');
+                if (statusNode) {
+                    statusNode.textContent = 'Распознано точек: ' + resolvedCount + ' из ' + effectivePlaces.length;
+                }
             });
         });
     }
